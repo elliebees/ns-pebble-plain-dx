@@ -1,5 +1,5 @@
 // Build a minimal, token-optional Nightscout /pebble HTML page
-// Auto-detects timezone from Nightscout or uses NIGHTSCOUT_TZ/local fallback
+// Features: token support, timezone via /status.json (with override), units (mg/dL or mmol/L)
 
 import fs from "node:fs/promises";
 
@@ -13,6 +13,7 @@ if (!NS) {
 const NS_BASE = NS.replace(/\/+$/, "");
 const pebbleURL = NS_BASE + "/pebble" + (TOKEN ? `?token=${encodeURIComponent(TOKEN)}` : "");
 const statusURL = NS_BASE + "/status.json" + (TOKEN ? `?token=${encodeURIComponent(TOKEN)}` : "");
+const MGDL_PER_MMOLL = 18.0182;
 
 async function getJSON(url) {
   const res = await fetch(url);
@@ -30,32 +31,77 @@ function isValidIanaTZ(tz) {
   } catch { return false; }
 }
 
-async function getTimezone() {
-  // 1️⃣ explicit override (environment variable)
+// Pull /status.json once (best effort) for timezone + unit
+async function getStatus() {
+  try {
+    return await getJSON(statusURL);
+  } catch {
+    return null;
+  }
+}
+
+function deriveTimezone(status) {
+  // 1) explicit override
   const override = process.env.NIGHTSCOUT_TZ?.trim();
   if (override && isValidIanaTZ(override)) return override;
 
-  // 2️⃣ try reading /status.json
-  try {
-    const s = await getJSON(statusURL);
-    const tz = s?.settings?.timezone?.trim();
-    if (tz && isValidIanaTZ(tz)) return tz;
-  } catch {
-    // ignore errors, fallback below
-  }
+  // 2) from Nightscout status
+  const tz = status?.settings?.timezone?.trim();
+  if (tz && isValidIanaTZ(tz)) return tz;
 
-  // 3️⃣ local timezone or UTC fallback
+  // 3) local or UTC
   const localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
   return isValidIanaTZ(localTZ) ? localTZ : "UTC";
 }
 
+function deriveUnits(status) {
+  // Nightscout typically reports "mg/dl" or "mmol" in settings.units (sometimes units_bg)
+  const raw =
+    status?.settings?.units ??
+    status?.settings?.units_bg ??
+    status?.units ??
+    "mg/dl";
+  const v = String(raw).toLowerCase();
+  return v.includes("mmol") ? "mmol/L" : "mg/dL";
+}
+
+function formatBG(valueMgdl, units) {
+  const n = Number(valueMgdl);
+  if (!Number.isFinite(n)) return String(valueMgdl ?? "?");
+  if (units === "mmol/L") return (n / MGDL_PER_MMOLL).toFixed(1);
+  return String(Math.round(n)); // mg/dL as integer
+}
+
+function formatDelta(deltaStrOrNum, units) {
+  if (deltaStrOrNum == null || deltaStrOrNum === "") return "";
+  // Pebble often gives "+5" (string). Extract sign + number.
+  const m = String(deltaStrOrNum).match(/^\s*([+-]?)(\d+(\.\d+)?)\s*$/);
+  if (!m) return String(deltaStrOrNum); // if weird, just show as-is
+  const sign = m[1] || "";
+  const val = Number(m[2]);
+  if (!Number.isFinite(val)) return String(deltaStrOrNum);
+
+  if (units === "mmol/L") {
+    const mmol = val / MGDL_PER_MMOLL;
+    const s = (sign === "" ? (val >= 0 ? "+" : "") : sign);
+    return `${s}${mmol.toFixed(1)}`;
+  } else {
+    // mg/dL integer delta
+    const s = (sign === "" ? (val >= 0 ? "+" : "") : sign);
+    return `${s}${Math.round(val)}`;
+  }
+}
+
 try {
-  const [data, tz] = await Promise.all([getJSON(pebbleURL), getTimezone()]);
+  const [data, status] = await Promise.all([getJSON(pebbleURL), getStatus()]);
+  const tz = deriveTimezone(status);
+  const units = deriveUnits(status);
 
   const bg0 = (data?.bgs && data.bgs[0]) || {};
-  const sgv = bg0.sgv ?? "?";
-  const delta = bg0.bgdelta ?? "";
+  const sgvRaw = bg0.sgv ?? "?";
+  const deltaRaw = bg0.bgdelta ?? "";
   const trend = bg0.trend ?? bg0.direction;
+
   const tmap = {
     1: "↓", 2: "↘", 3: "→", 4: "↗", 5: "↑",
     DoubleDown: "↓↓", SingleDown: "↓", FortyFiveDown: "↘",
@@ -70,6 +116,8 @@ try {
     age = `${mins}m ago`;
   }
 
+  const sgvDisplay = formatBG(sgvRaw, units);
+  const deltaDisplay = formatDelta(deltaRaw, units);
   const battery = data?.status?.device?.battery ?? data?.status?.battery ?? "?";
 
   const now = new Date();
@@ -94,7 +142,7 @@ try {
 </head>
 <body>
 <pre>
-BG: <big>${sgv}</big> ${arrow} ${delta}
+BG: <big>${sgvDisplay}</big> ${units} ${arrow} ${deltaDisplay}
 Time: ${age}
 Battery: ${battery}
 Updated: ${stamp} (${tz})
@@ -103,7 +151,7 @@ Updated: ${stamp} (${tz})
 </html>`;
 
   await fs.writeFile("index.html", html, "utf8");
-  console.log(`✅ Built index.html from ${pebbleURL} [${tz}]`);
+  console.log(`✅ Built index.html from ${pebbleURL} [${tz}] [${units}]`);
 } catch (err) {
   const msg = String(err?.message || err);
   const fallback = `<!doctype html><meta charset="utf-8"><pre>Build error: ${msg}
