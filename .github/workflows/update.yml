@@ -5,10 +5,10 @@ on:
     - cron: "*/5 * * * *"        # every 5 minutes
   workflow_dispatch:
   push:
-    branches: [ main ]           # <-- make sure this matches the branch your Pages uses
+    branches: [ main ]           # make sure Pages is publishing from this same branch
 
 permissions:
-  contents: write
+  contents: write                # required for GITHUB_TOKEN push
 
 jobs:
   build:
@@ -40,11 +40,10 @@ jobs:
         env:
           NIGHTSCOUT_URL: ${{ secrets.NIGHTSCOUT_URL }}
           NIGHTSCOUT_TOKEN: ${{ secrets.NIGHTSCOUT_TOKEN }}
-          NIGHTSCOUT_TZ: ${{ secrets.NIGHTSCOUT_TZ }}
-          FORCE_MMOL: ${{ secrets.FORCE_MMOL }}   # set to "true" (string) to force mmol
+          NIGHTSCOUT_TZ: ${{ secrets.NIGHTSCOUT_TZ }}    # optional
+          FORCE_MMOL: ${{ secrets.FORCE_MMOL }}          # set to "true" to force mmol/L
         run: npm run build
 
-      # --- NEW: show exactly what changed before committing
       - name: Show changes before commit
         run: |
           echo "-------- git status --------"
@@ -57,14 +56,27 @@ jobs:
           ls -la v || true
           echo "-------------------------------------"
 
-      # Commit lockfile, index.html, and any versioned HTML files under v/
-      - name: Commit & push updated files
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "chore: refresh pebble-plain and update lockfile"
-          commit_user_name: "github-actions[bot]"
-          commit_user_email: "41898282+github-actions[bot]@users.noreply.github.com"
-          file_pattern: |
-            package-lock.json
-            index.html
-            v/*.html
+      # Manual commit & push so we can see real errors if push is blocked
+      - name: Commit changes
+        run: |
+          set -e
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Stage only the files we expect
+          git add --force index.html package-lock.json || true
+
+          # Only commit if there are staged changes
+          if git diff --cached --quiet; then
+            echo "No staged changes to commit."
+          else
+            git commit -m "chore: refresh pebble-plain (index.html) and lockfile"
+          fi
+
+      - name: Push changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          # This will fail loudly if branch protection blocks direct pushes
+          git push origin HEAD:main
