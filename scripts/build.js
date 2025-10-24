@@ -1,37 +1,52 @@
 // Build a minimal, token-optional Nightscout /pebble HTML page
-// Adds timezone awareness by reading Nightscout's /status.json
+// Auto-detects timezone from Nightscout or uses NIGHTSCOUT_TZ/local fallback
 
 import fs from "node:fs/promises";
 
 const NS = process.env.NIGHTSCOUT_URL;
 const TOKEN = process.env.NIGHTSCOUT_TOKEN?.trim();
 if (!NS) {
-  console.error("Missing NIGHTSCOUT_URL environment variable.");
+  console.error("❌ Missing NIGHTSCOUT_URL environment variable.");
   process.exit(1);
 }
 
-// Build /pebble URL (optionally with token)
-let pebbleURL = NS.replace(/\/+$/, "") + "/pebble";
-if (TOKEN) pebbleURL += `?token=${encodeURIComponent(TOKEN)}`;
+const NS_BASE = NS.replace(/\/+$/, "");
+const pebbleURL = NS_BASE + "/pebble" + (TOKEN ? `?token=${encodeURIComponent(TOKEN)}` : "");
+const statusURL = NS_BASE + "/status.json" + (TOKEN ? `?token=${encodeURIComponent(TOKEN)}` : "");
 
-// Helper to safely fetch JSON
 async function getJSON(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${url} → ${res.status}`);
   return res.json();
 }
 
-// Determine Nightscout's timezone
-async function getTimezone() {
+function isValidIanaTZ(tz) {
   try {
-    const statusURL = NS.replace(/\/+$/, "") + "/status.json";
+    if (typeof Intl.supportedValuesOf === "function") {
+      return Intl.supportedValuesOf("timeZone").includes(tz);
+    }
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch { return false; }
+}
+
+async function getTimezone() {
+  // 1️⃣ explicit override (environment variable)
+  const override = process.env.NIGHTSCOUT_TZ?.trim();
+  if (override && isValidIanaTZ(override)) return override;
+
+  // 2️⃣ try reading /status.json
+  try {
     const s = await getJSON(statusURL);
-    const tz = s?.settings?.timezone;
-    if (tz && typeof tz === "string" && tz.trim()) return tz.trim();
+    const tz = s?.settings?.timezone?.trim();
+    if (tz && isValidIanaTZ(tz)) return tz;
   } catch {
-    // ignore
+    // ignore errors, fallback below
   }
-  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+  // 3️⃣ local timezone or UTC fallback
+  const localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return isValidIanaTZ(localTZ) ? localTZ : "UTC";
 }
 
 try {
@@ -57,7 +72,6 @@ try {
 
   const battery = data?.status?.device?.battery ?? data?.status?.battery ?? "?";
 
-  // Format updated time in Nightscout's timezone
   const now = new Date();
   const fmt = new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
@@ -66,7 +80,8 @@ try {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    second: "2-digit"
+    second: "2-digit",
+    timeZoneName: "short"
   });
   const stamp = fmt.format(now);
 
@@ -88,7 +103,7 @@ Updated: ${stamp} (${tz})
 </html>`;
 
   await fs.writeFile("index.html", html, "utf8");
-  console.log(`✅ Built index.html from ${pebbleURL} (${tz})`);
+  console.log(`✅ Built index.html from ${pebbleURL} [${tz}]`);
 } catch (err) {
   const msg = String(err?.message || err);
   const fallback = `<!doctype html><meta charset="utf-8"><pre>Build error: ${msg}
