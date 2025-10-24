@@ -29,7 +29,7 @@ jobs:
           echo "NIGHTSCOUT_TOKEN set? ${{ secrets.NIGHTSCOUT_TOKEN != '' }}"
           echo "NIGHTSCOUT_TZ value: '${NIGHTSCOUT_TZ}'"
         env:
-          NIGHTSCOUT_TZ: ${{ secrets.NIGHTSCOUT_TZ }}   # or vars.NIGHTSCOUT_TZ
+          NIGHTSCOUT_TZ: ${{ secrets.NIGHTSCOUT_TZ }}
 
       # ------------------------------------------------------------
       # Install dependencies and create package-lock.json if missing
@@ -44,7 +44,8 @@ jobs:
         env:
           NIGHTSCOUT_URL: ${{ secrets.NIGHTSCOUT_URL }}
           NIGHTSCOUT_TOKEN: ${{ secrets.NIGHTSCOUT_TOKEN }}
-          NIGHTSCOUT_TZ: ${{ secrets.NIGHTSCOUT_TZ }}   # or vars.NIGHTSCOUT_TZ
+          NIGHTSCOUT_TZ: ${{ secrets.NIGHTSCOUT_TZ }}
+          FORCE_MMOL: ${{ secrets.FORCE_MMOL }}
         run: npm run build
 
       # ------------------------------------------------------------
