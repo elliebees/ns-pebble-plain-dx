@@ -2,8 +2,8 @@ name: Build plain pebble page
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # every 5 minutes (best effort)
-  workflow_dispatch:        # allow manual runs from the Actions tab
+    - cron: "*/5 * * * *"        # every 5 minutes
+  workflow_dispatch:
   push:
     branches: [ main ]
 
@@ -13,19 +13,33 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Install (no deps, but keeps it standard)
+      # Optional sanity check: show what envs the step will see
+      - name: Debug envs (sanity check)
+        run: |
+          echo "NIGHTSCOUT_URL set? ${{ secrets.NIGHTSCOUT_URL != '' }}"
+          echo "NIGHTSCOUT_TOKEN set? ${{ secrets.NIGHTSCOUT_TOKEN != '' }}"
+          echo "NIGHTSCOUT_TZ value: '${NIGHTSCOUT_TZ}'"
+        env:
+          NIGHTSCOUT_TZ: ${{ secrets.NIGHTSCOUT_TZ }}   # <-- you said it's stored with other secrets
+
+      - name: Install (no deps)
         run: npm ci --ignore-scripts --no-audit --no-fund || true
 
       - name: Build index.html from Nightscout /pebble
         env:
           NIGHTSCOUT_URL: ${{ secrets.NIGHTSCOUT_URL }}
+          NIGHTSCOUT_TOKEN: ${{ secrets.NIGHTSCOUT_TOKEN }}   # optional
+          NIGHTSCOUT_TZ: ${{ secrets.NIGHTSCOUT_TZ }}         # IMPORTANT
         run: npm run build
 
       - name: Commit & push if changed
