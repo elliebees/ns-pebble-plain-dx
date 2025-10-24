@@ -5,7 +5,7 @@ on:
     - cron: "*/5 * * * *"        # every 5 minutes
   workflow_dispatch:
   push:
-    branches: [ main ]           # change to your test branch if needed
+    branches: [ main ]           # <-- make sure this matches the branch your Pages uses
 
 permissions:
   contents: write
@@ -17,38 +17,54 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      # Optional sanity check (secrets are masked in logs)
-      - name: Debug envs (sanity check)
+      - name: Debug secrets presence
         run: |
           echo "NIGHTSCOUT_URL set? ${{ secrets.NIGHTSCOUT_URL != '' }}"
           echo "NIGHTSCOUT_TOKEN set? ${{ secrets.NIGHTSCOUT_TOKEN != '' }}"
           echo "NIGHTSCOUT_TZ set? ${{ secrets.NIGHTSCOUT_TZ != '' }}"
           echo "FORCE_MMOL set? ${{ secrets.FORCE_MMOL != '' }}"
 
-      # Install deps and create package-lock.json if missing
       - name: Install dependencies and create lockfile
         run: npm install --no-audit --no-fund
 
-      # Build the HTML (envs pulled from Secrets; FORCE_MMOL can be a secret)
       - name: Build index.html from Nightscout /pebble
         env:
           NIGHTSCOUT_URL: ${{ secrets.NIGHTSCOUT_URL }}
-          NIGHTSCOUT_TOKEN: ${{ secrets.NIGHTSCOUT_TOKEN }}   # optional
-          NIGHTSCOUT_TZ: ${{ secrets.NIGHTSCOUT_TZ }}         # optional
-          FORCE_MMOL: ${{ secrets.FORCE_MMOL }}               # <-- secret-controlled toggle; set value to "true" to force mmol
+          NIGHTSCOUT_TOKEN: ${{ secrets.NIGHTSCOUT_TOKEN }}
+          NIGHTSCOUT_TZ: ${{ secrets.NIGHTSCOUT_TZ }}
+          FORCE_MMOL: ${{ secrets.FORCE_MMOL }}   # set to "true" (string) to force mmol
         run: npm run build
 
-      # Commit both the lockfile and the generated index.html if they changed
+      # --- NEW: show exactly what changed before committing
+      - name: Show changes before commit
+        run: |
+          echo "-------- git status --------"
+          git status
+          echo "-------- changed files (git diff --name-only) --------"
+          git diff --name-only
+          echo "-------- ls -la at repo root --------"
+          ls -la
+          echo "-------- list versioned files (if any) --------"
+          ls -la v || true
+          echo "-------------------------------------"
+
+      # Commit lockfile, index.html, and any versioned HTML files under v/
       - name: Commit & push updated files
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore: refresh pebble-plain and update lockfile"
+          commit_user_name: "github-actions[bot]"
+          commit_user_email: "41898282+github-actions[bot]@users.noreply.github.com"
           file_pattern: |
             package-lock.json
             index.html
+            v/*.html
