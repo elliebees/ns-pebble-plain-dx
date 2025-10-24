@@ -1,9 +1,3 @@
-Awesome — let’s do this 100% free with **GitHub Pages + a GitHub Actions cron** that rebuilds a super-plain HTML file from Nightscout’s `/pebble`. No JS runs on the phone; it just loads a tiny HTML page that auto-refreshes.
-
-Below is a copy-paste setup. You’ll be live in a few minutes.
-
----
-
 # 1) Make a public repo, fork this one if you want
 
 Name it something like `ns-pebble-plain`.
