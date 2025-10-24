@@ -1,12 +1,5 @@
 // Build a minimal, token-optional Nightscout /pebble HTML page
-// Features:
-// - Read-only token support (optional)
-// - Units auto-detect (mg/dL or mmol/L) via /status.json
-// - Timezone: NIGHTSCOUT_TZ override > /status.json > runner local (UTC fallback)
-// - Robust timezone formatting via moment-timezone (independent of runner ICU)
-// - FORCE_MMOL=true to force mmol/L (for testing)
-// - Cache-busting to avoid GitHub Pages / Opera Mini caching issues
-// - Debug logs for transparency
+// Works on very old mobile browsers (Nokia, Opera Mini, etc.)
 
 import fs from "node:fs/promises";
 import moment from "moment-timezone";
@@ -38,8 +31,9 @@ async function getJSON(url) {
 }
 
 async function getStatus() {
-  try { return await getJSON(statusURL); }
-  catch (e) {
+  try {
+    return await getJSON(statusURL);
+  } catch (e) {
     console.log("DEBUG /status.json fetch error:", String(e?.message || e));
     return null;
   }
@@ -125,10 +119,20 @@ try {
   const deltaRaw = bg0.bgdelta ?? "";
   const trend = bg0.trend ?? bg0.direction;
 
+  // ASCII-only trend map (for old devices)
   const tmap = {
-    1: "↓", 2: "↘", 3: "→", 4: "↗", 5: "↑",
-    DoubleDown: "↓↓", SingleDown: "↓", FortyFiveDown: "↘",
-    Flat: "→", FortyFiveUp: "↗", SingleUp: "↑", DoubleUp: "↑↑"
+    1: "v",
+    2: "v>",
+    3: "--",
+    4: "^>",
+    5: "^",
+    DoubleDown: "vv",
+    SingleDown: "v",
+    FortyFiveDown: "v>",
+    Flat: "--",
+    FortyFiveUp: "^>",
+    SingleUp: "^",
+    DoubleUp: "^^"
   };
   const arrow = tmap[trend] || (typeof trend === "string" ? trend : "");
 
@@ -143,9 +147,10 @@ try {
   const deltaDisplay = formatDelta(deltaRaw, units);
   const battery = data?.status?.device?.battery ?? data?.status?.battery ?? "?";
 
-  const stamp = moment().tz(tz && moment.tz.zone(tz) ? tz : "UTC").format("YYYY-MM-DD HH:mm:ss z");
+  const stamp = moment()
+    .tz(tz && moment.tz.zone(tz) ? tz : "UTC")
+    .format("YYYY-MM-DD HH:mm:ss z");
 
-  // cache-busting every minute
   const cacheBust = Math.floor(Date.now() / 60000);
 
   const html = `<!doctype html>
