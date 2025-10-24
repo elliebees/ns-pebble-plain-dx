@@ -30,6 +30,8 @@ Repo → **Settings → Secrets and variables → Actions → New repository sec
 * Name: `NIGHTSCOUT_TOKEN`
 * Value: The token used for read access to your nightscout data, if applicable
 * Make sure to add your token that generally looks like `?token=readonly-token-goes-here` if you have your nightscout set to private... simply add the token after the equal sign.
+* Name: `NIGHTSCOUT_TZ`
+* Value: IATA Standard Time Zone for fallback in case it pulls UTC for you. EXAMPLE: `America/Los_Angeles`
 
 # 5) Push to main
 
