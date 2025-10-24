@@ -33,7 +33,7 @@ Repo → **Settings → Secrets and variables → Actions → New repository sec
 * Name: `NIGHTSCOUT_TZ`
 * Value: IATA Standard Time Zone for fallback in case it pulls UTC for you. EXAMPLE: `America/Los_Angeles`
 * Name: `FORCE_MMOL`
-* Value: Boolean true or false, in case it doesnt pull your profile.json value, you can force it on here by adding a secret.
+* Value: Boolean `"true"` or `"false"`, in case it doesnt pull your profile.json value, you can force it on here by adding a secret.
 
 # 5) Push to main
 
