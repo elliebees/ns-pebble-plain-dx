@@ -5,10 +5,10 @@ on:
     - cron: "*/5 * * * *"        # every 5 minutes
   workflow_dispatch:
   push:
-    branches: [ main ]           # make sure Pages is publishing from this same branch
+    branches: [ main ]           # must match your Pages branch
 
 permissions:
-  contents: write                # required for GITHUB_TOKEN push
+  contents: write
 
 jobs:
   build:
@@ -26,13 +26,6 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Debug secrets presence
-        run: |
-          echo "NIGHTSCOUT_URL set? ${{ secrets.NIGHTSCOUT_URL != '' }}"
-          echo "NIGHTSCOUT_TOKEN set? ${{ secrets.NIGHTSCOUT_TOKEN != '' }}"
-          echo "NIGHTSCOUT_TZ set? ${{ secrets.NIGHTSCOUT_TZ != '' }}"
-          echo "FORCE_MMOL set? ${{ secrets.FORCE_MMOL != '' }}"
-
       - name: Install dependencies and create lockfile
         run: npm install --no-audit --no-fund
 
@@ -40,8 +33,9 @@ jobs:
         env:
           NIGHTSCOUT_URL: ${{ secrets.NIGHTSCOUT_URL }}
           NIGHTSCOUT_TOKEN: ${{ secrets.NIGHTSCOUT_TOKEN }}
-          NIGHTSCOUT_TZ: ${{ secrets.NIGHTSCOUT_TZ }}    # optional
-          FORCE_MMOL: ${{ secrets.FORCE_MMOL }}          # set to "true" to force mmol/L
+          NIGHTSCOUT_TZ: ${{ secrets.NIGHTSCOUT_TZ }}
+          NIGHTSCOUT_UNITS: ${{ secrets.NIGHTSCOUT_UNITS }}   # <-- new secret for mmol/mgdl override
+          FORCE_MMOL: ${{ secrets.FORCE_MMOL }}               # optional test override
         run: npm run build
 
       - name: Show changes before commit
@@ -50,33 +44,17 @@ jobs:
           git status
           echo "-------- changed files (git diff --name-only) --------"
           git diff --name-only
-          echo "-------- ls -la at repo root --------"
-          ls -la
-          echo "-------- list versioned files (if any) --------"
-          ls -la v || true
           echo "-------------------------------------"
 
-      # Manual commit & push so we can see real errors if push is blocked
-      - name: Commit changes
+      - name: Commit and push
         run: |
           set -e
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # Stage only the files we expect
           git add --force index.html package-lock.json || true
-
-          # Only commit if there are staged changes
           if git diff --cached --quiet; then
             echo "No staged changes to commit."
           else
             git commit -m "chore: refresh pebble-plain (index.html) and lockfile"
           fi
-
-      - name: Push changes
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -e
-          # This will fail loudly if branch protection blocks direct pushes
           git push origin HEAD:main
