@@ -1,12 +1,18 @@
 // Build a minimal, token-optional Nightscout /pebble HTML page
-// Features: token support, timezone (override > /status.json > local), mmol support
-// Includes DEBUG logs so you can see exactly what's happening in the Actions log.
+// Features:
+// - Read-only token support (optional)
+// - Units auto-detect (mg/dL or mmol/L) via /status.json
+// - Timezone: NIGHTSCOUT_TZ override > /status.json > runner local (UTC fallback)
+// - Robust timezone formatting via moment-timezone (independent of runner ICU)
+// - Debug logs printed to Actions log for easy troubleshooting
 
 import fs from "node:fs/promises";
+import moment from "moment-timezone";
 
 const NS = process.env.NIGHTSCOUT_URL;
 const TOKEN = process.env.NIGHTSCOUT_TOKEN?.trim();
 const RAW_TZ = process.env.NIGHTSCOUT_TZ; // may be undefined
+
 console.log("DEBUG NIGHTSCOUT_URL exists:", Boolean(NS));
 console.log("DEBUG NIGHTSCOUT_TOKEN provided:", Boolean(TOKEN));
 console.log("DEBUG NIGHTSCOUT_TZ (raw):", JSON.stringify(RAW_TZ));
@@ -27,28 +33,6 @@ async function getJSON(url) {
   return res.json();
 }
 
-// We trust override if present (avoids ICU/runner issues).
-async function getTimezone() {
-  const override = RAW_TZ?.trim();
-  if (override) {
-    console.log("DEBUG using TZ override:", override);
-    return override;
-  }
-
-  try {
-    const s = await getJSON(statusURL);
-    const tzFromStatus = s?.settings?.timezone?.trim();
-    console.log("DEBUG /status.json timezone:", tzFromStatus || "(none)");
-    if (tzFromStatus) return tzFromStatus;
-  } catch (e) {
-    console.log("DEBUG fetching /status.json failed:", String(e?.message || e));
-  }
-
-  const localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  console.log("DEBUG fallback timezone:", localTZ);
-  return localTZ;
-}
-
 async function getStatus() {
   try { return await getJSON(statusURL); }
   catch (e) {
@@ -67,6 +51,39 @@ function deriveUnits(status) {
   const units = v.includes("mmol") ? "mmol/L" : "mg/dL";
   console.log("DEBUG units derived:", raw, "→", units);
   return units;
+}
+
+function resolveTimezone(status) {
+  // 1) explicit override (trust user, but warn if unknown to moment)
+  const override = RAW_TZ?.trim();
+  if (override) {
+    if (!moment.tz.zone(override)) {
+      console.log("DEBUG WARNING: TZ override not found in moment DB:", override);
+    } else {
+      console.log("DEBUG using TZ override:", override);
+    }
+    return override;
+  }
+
+  // 2) Nightscout /status.json
+  const tzFromStatus = status?.settings?.timezone?.trim();
+  if (tzFromStatus) {
+    if (!moment.tz.zone(tzFromStatus)) {
+      console.log("DEBUG WARNING: /status.json timezone not in moment DB:", tzFromStatus);
+    } else {
+      console.log("DEBUG using TZ from /status.json:", tzFromStatus);
+    }
+    return tzFromStatus;
+  }
+
+  // 3) runner local or UTC
+  const localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  if (!moment.tz.zone(localTZ)) {
+    console.log("DEBUG WARNING: runner local TZ not in moment DB; using UTC:", localTZ);
+    return "UTC";
+  }
+  console.log("DEBUG using runner local TZ:", localTZ);
+  return localTZ;
 }
 
 function formatBG(valueMgdl, units) {
@@ -93,9 +110,10 @@ function formatDelta(deltaStrOrNum, units) {
 }
 
 try {
-  const [data, status, tz] = await Promise.all([getJSON(pebbleURL), getStatus(), getTimezone()]);
+  const [data, status] = await Promise.all([getJSON(pebbleURL), getStatus()]);
 
   const units = deriveUnits(status);
+  const tz = resolveTimezone(status);
 
   const bg0 = (data?.bgs && data.bgs[0]) || {};
   const sgvRaw = bg0.sgv ?? "?";
@@ -120,18 +138,8 @@ try {
   const deltaDisplay = formatDelta(deltaRaw, units);
   const battery = data?.status?.device?.battery ?? data?.status?.battery ?? "?";
 
-  const now = new Date();
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    timeZoneName: "short"
-  });
-  const stamp = fmt.format(now);
+  // Use moment-timezone to format robustly regardless of runner ICU
+  const stamp = moment().tz(tz && moment.tz.zone(tz) ? tz : "UTC").format("YYYY-MM-DD HH:mm:ss z");
 
   const html = `<!doctype html>
 <html>
@@ -145,13 +153,13 @@ try {
 BG: <big>${sgvDisplay}</big> ${units} ${arrow} ${deltaDisplay}
 Time: ${age}
 Battery: ${battery}
-Updated: ${stamp} (${tz})
+Updated: ${stamp} (${tz || "UTC"})
 </pre>
 </body>
 </html>`;
 
   await fs.writeFile("index.html", html, "utf8");
-  console.log(`✅ Built index.html from ${pebbleURL} [${tz}] [${units}]`);
+  console.log(`✅ Built index.html from ${pebbleURL} [${tz || "UTC"}] [${units}]`);
 } catch (err) {
   const msg = String(err?.message || err);
   const fallback = `<!doctype html><meta charset="utf-8"><pre>Build error: ${msg}
