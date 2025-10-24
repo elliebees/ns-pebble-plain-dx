@@ -35,7 +35,11 @@ Repo → **Settings → Secrets and variables → Actions → New repository sec
 * Name: `FORCE_MMOL`
 * Value: Boolean `true` or `false`, in case you have MG/DL and you want MMOL, you can force it on here by adding a secret.
 
-# 5) Push to main
+# 5) Enable workflows
+
+* Go to Actions > Workflows > Build plain pebble page and "go ahead and enable them".
+
+# 6) Push to main
 
 Commit all files and push. Pages publishes the site; the Action will refresh `index.html` every ~5 minutes.
 
