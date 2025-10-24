@@ -34,6 +34,8 @@ Repo → **Settings → Secrets and variables → Actions → New repository sec
 * Value: IATA Standard Time Zone for fallback in case it pulls UTC for you. EXAMPLE: `America/Los_Angeles`
 * Name: `FORCE_MMOL`
 * Value: Boolean `true` or `false`, in case you have MG/DL and you want MMOL, you can force it on here by adding a secret.
+* Name: NIGHTSCOUT_UNITS
+* Value: (optional: `mmol` or `mgdl`) use this if it doesnt give you the right units display.
 
 # 5) Enable workflows
 
