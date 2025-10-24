@@ -4,7 +4,8 @@
 // - Units auto-detect (mg/dL or mmol/L) via /status.json
 // - Timezone: NIGHTSCOUT_TZ override > /status.json > runner local (UTC fallback)
 // - Robust timezone formatting via moment-timezone (independent of runner ICU)
-// - Force mmol override via FORCE_MMOL=true (for testing)
+// - FORCE_MMOL=true to force mmol/L (for testing)
+// - Cache-busting to avoid GitHub Pages / Opera Mini caching issues
 // - Debug logs for transparency
 
 import fs from "node:fs/promises";
@@ -144,11 +145,17 @@ try {
 
   const stamp = moment().tz(tz && moment.tz.zone(tz) ? tz : "UTC").format("YYYY-MM-DD HH:mm:ss z");
 
+  // cache-busting every minute
+  const cacheBust = Math.floor(Date.now() / 60000);
+
   const html = `<!doctype html>
 <html>
 <head>
 <meta http-equiv="content-type" content="text/html; charset=utf-8">
-<meta http-equiv="refresh" content="60">
+<meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="pragma" content="no-cache">
+<meta http-equiv="expires" content="0">
+<meta http-equiv="refresh" content="60;url=./?r=${cacheBust}">
 <title>BG Simple</title>
 </head>
 <body>
