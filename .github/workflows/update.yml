@@ -1,0 +1,35 @@
+name: Build plain pebble page
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # every 5 minutes (best effort)
+  workflow_dispatch:        # allow manual runs from the Actions tab
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install (no deps, but keeps it standard)
+        run: npm ci --ignore-scripts --no-audit --no-fund || true
+
+      - name: Build index.html from Nightscout /pebble
+        env:
+          NIGHTSCOUT_URL: ${{ secrets.NIGHTSCOUT_URL }}
+        run: npm run build
+
+      - name: Commit & push if changed
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: refresh pebble-plain"
+          file_pattern: "index.html"
