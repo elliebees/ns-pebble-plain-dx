@@ -5,7 +5,7 @@ on:
     - cron: "*/5 * * * *"        # every 5 minutes
   workflow_dispatch:
   push:
-    branches: [ main ]           # or your test branch
+    branches: [ main ]           # change to your test branch if needed
 
 permissions:
   contents: write
@@ -23,34 +23,28 @@ jobs:
         with:
           node-version: "20"
 
+      # Optional sanity check (secrets are masked in logs)
       - name: Debug envs (sanity check)
         run: |
           echo "NIGHTSCOUT_URL set? ${{ secrets.NIGHTSCOUT_URL != '' }}"
           echo "NIGHTSCOUT_TOKEN set? ${{ secrets.NIGHTSCOUT_TOKEN != '' }}"
-          echo "NIGHTSCOUT_TZ value: '${NIGHTSCOUT_TZ}'"
-        env:
-          NIGHTSCOUT_TZ: ${{ secrets.NIGHTSCOUT_TZ }}
+          echo "NIGHTSCOUT_TZ set? ${{ secrets.NIGHTSCOUT_TZ != '' }}"
+          echo "FORCE_MMOL set? ${{ secrets.FORCE_MMOL != '' }}"
 
-      # ------------------------------------------------------------
-      # Install dependencies and create package-lock.json if missing
-      # ------------------------------------------------------------
+      # Install deps and create package-lock.json if missing
       - name: Install dependencies and create lockfile
         run: npm install --no-audit --no-fund
 
-      # ------------------------------------------------------------
-      # Build index.html from Nightscout /pebble
-      # ------------------------------------------------------------
+      # Build the HTML (envs pulled from Secrets; FORCE_MMOL can be a secret)
       - name: Build index.html from Nightscout /pebble
         env:
           NIGHTSCOUT_URL: ${{ secrets.NIGHTSCOUT_URL }}
-          NIGHTSCOUT_TOKEN: ${{ secrets.NIGHTSCOUT_TOKEN }}
-          NIGHTSCOUT_TZ: ${{ secrets.NIGHTSCOUT_TZ }}
-          FORCE_MMOL: ${{ secrets.FORCE_MMOL }}
+          NIGHTSCOUT_TOKEN: ${{ secrets.NIGHTSCOUT_TOKEN }}   # optional
+          NIGHTSCOUT_TZ: ${{ secrets.NIGHTSCOUT_TZ }}         # optional
+          FORCE_MMOL: ${{ secrets.FORCE_MMOL }}               # <-- secret-controlled toggle; set value to "true" to force mmol
         run: npm run build
 
-      # ------------------------------------------------------------
-      # Commit lockfile and index.html if changed
-      # ------------------------------------------------------------
+      # Commit both the lockfile and the generated index.html if they changed
       - name: Commit & push updated files
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
