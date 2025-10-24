@@ -1,0 +1,61 @@
+Awesome — let’s do this 100% free with **GitHub Pages + a GitHub Actions cron** that rebuilds a super-plain HTML file from Nightscout’s `/pebble`. No JS runs on the phone; it just loads a tiny HTML page that auto-refreshes.
+
+Below is a copy-paste setup. You’ll be live in a few minutes.
+
+---
+
+# 1) Make a public repo, fork this one if you want
+
+Name it something like `ns-pebble-plain`.
+
+# 2) Enable GitHub Pages
+
+Repo → **Settings → Pages**
+
+* Source: **Deploy from a branch**
+* Branch: **main** / **/root**
+  After you push once, your site will be at:
+
+```
+https://<your-username>.github.io/ns-pebble-plain/
+```
+
+# 3) Add these files
+
+### `package.json`
+### `scripts/build.js`
+### `.github/workflows/update.yml`
+
+
+# 4) Add your Nightscout URL and Token as Secrets
+
+Repo → **Settings → Secrets and variables → Actions → New repository secret**
+
+* Name: `NIGHTSCOUT_URL`
+* Value: `https://YOUR-NIGHTSCOUT-HOST` (the same host you use for `/pebble`)
+* Name: `
+* Make sure to add your token `?token=readonly-token-goes-here` if you have your nightscout set to private.
+
+# 5) Push to main
+
+Commit all files and push. Pages publishes the site; the Action will refresh `index.html` every ~5 minutes.
+
+---
+
+## Use it on the old browser
+
+Open:
+
+```
+https://<your-username>.github.io/ns-pebble-plain/
+```
+
+* Pure HTML, no CSS or JS.
+* Auto-refreshes every 60s (via `<meta refresh>`).
+* Works in Opera Mini / very old phones.
+
+---
+
+
+
+Want me to pre-fill these files with your GitHub username and a sample Nightscout URL so you can just paste them?
