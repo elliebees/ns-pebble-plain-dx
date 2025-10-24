@@ -27,8 +27,9 @@ Repo → **Settings → Secrets and variables → Actions → New repository sec
 
 * Name: `NIGHTSCOUT_URL`
 * Value: `https://YOUR-NIGHTSCOUT-HOST` (the same host you use for `/pebble`)
-* Name: `
-* Make sure to add your token `?token=readonly-token-goes-here` if you have your nightscout set to private.
+* Name: `NIGHTSCOUT_TOKEN`
+* Value: The token used for read access to your nightscoput data, if applicable
+* Make sure to add your token that generally looks like `?token=readonly-token-goes-here` if you have your nightscout set to private... simply add the token after the equal sign.
 
 # 5) Push to main
 
