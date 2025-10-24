@@ -32,6 +32,8 @@ Repo → **Settings → Secrets and variables → Actions → New repository sec
 * Make sure to add your token that generally looks like `?token=readonly-token-goes-here` if you have your nightscout set to private... simply add the token after the equal sign.
 * Name: `NIGHTSCOUT_TZ`
 * Value: IATA Standard Time Zone for fallback in case it pulls UTC for you. EXAMPLE: `America/Los_Angeles`
+* Name: `FORCE_MMOL`
+* Value: Boolean true or false, in case it doesnt pull your profile.json value, you can force it on here by adding a secret.
 
 # 5) Push to main
 
