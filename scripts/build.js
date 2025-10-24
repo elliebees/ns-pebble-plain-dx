@@ -1,10 +1,16 @@
 // Build a minimal, token-optional Nightscout /pebble HTML page
-// Features: token support, timezone via /status.json (with override), units (mg/dL or mmol/L)
+// Features: token support, timezone (override > /status.json > local), mmol support
+// Includes DEBUG logs so you can see exactly what's happening in the Actions log.
 
 import fs from "node:fs/promises";
 
 const NS = process.env.NIGHTSCOUT_URL;
 const TOKEN = process.env.NIGHTSCOUT_TOKEN?.trim();
+const RAW_TZ = process.env.NIGHTSCOUT_TZ; // may be undefined
+console.log("DEBUG NIGHTSCOUT_URL exists:", Boolean(NS));
+console.log("DEBUG NIGHTSCOUT_TOKEN provided:", Boolean(TOKEN));
+console.log("DEBUG NIGHTSCOUT_TZ (raw):", JSON.stringify(RAW_TZ));
+
 if (!NS) {
   console.error("❌ Missing NIGHTSCOUT_URL environment variable.");
   process.exit(1);
@@ -21,80 +27,74 @@ async function getJSON(url) {
   return res.json();
 }
 
-function isValidIanaTZ(tz) {
+// We trust override if present (avoids ICU/runner issues).
+async function getTimezone() {
+  const override = RAW_TZ?.trim();
+  if (override) {
+    console.log("DEBUG using TZ override:", override);
+    return override;
+  }
+
   try {
-    if (typeof Intl.supportedValuesOf === "function") {
-      return Intl.supportedValuesOf("timeZone").includes(tz);
-    }
-    new Intl.DateTimeFormat("en-US", { timeZone: tz });
-    return true;
-  } catch { return false; }
+    const s = await getJSON(statusURL);
+    const tzFromStatus = s?.settings?.timezone?.trim();
+    console.log("DEBUG /status.json timezone:", tzFromStatus || "(none)");
+    if (tzFromStatus) return tzFromStatus;
+  } catch (e) {
+    console.log("DEBUG fetching /status.json failed:", String(e?.message || e));
+  }
+
+  const localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  console.log("DEBUG fallback timezone:", localTZ);
+  return localTZ;
 }
 
-// Pull /status.json once (best effort) for timezone + unit
 async function getStatus() {
-  try {
-    return await getJSON(statusURL);
-  } catch {
+  try { return await getJSON(statusURL); }
+  catch (e) {
+    console.log("DEBUG /status.json fetch error:", String(e?.message || e));
     return null;
   }
 }
 
-function deriveTimezone(status) {
-  // 1) explicit override
-  const override = process.env.NIGHTSCOUT_TZ?.trim();
-  if (override && isValidIanaTZ(override)) return override;
-
-  // 2) from Nightscout status
-  const tz = status?.settings?.timezone?.trim();
-  if (tz && isValidIanaTZ(tz)) return tz;
-
-  // 3) local or UTC
-  const localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return isValidIanaTZ(localTZ) ? localTZ : "UTC";
-}
-
 function deriveUnits(status) {
-  // Nightscout typically reports "mg/dl" or "mmol" in settings.units (sometimes units_bg)
   const raw =
     status?.settings?.units ??
     status?.settings?.units_bg ??
     status?.units ??
     "mg/dl";
   const v = String(raw).toLowerCase();
-  return v.includes("mmol") ? "mmol/L" : "mg/dL";
+  const units = v.includes("mmol") ? "mmol/L" : "mg/dL";
+  console.log("DEBUG units derived:", raw, "→", units);
+  return units;
 }
 
 function formatBG(valueMgdl, units) {
   const n = Number(valueMgdl);
   if (!Number.isFinite(n)) return String(valueMgdl ?? "?");
   if (units === "mmol/L") return (n / MGDL_PER_MMOLL).toFixed(1);
-  return String(Math.round(n)); // mg/dL as integer
+  return String(Math.round(n));
 }
 
 function formatDelta(deltaStrOrNum, units) {
   if (deltaStrOrNum == null || deltaStrOrNum === "") return "";
-  // Pebble often gives "+5" (string). Extract sign + number.
   const m = String(deltaStrOrNum).match(/^\s*([+-]?)(\d+(\.\d+)?)\s*$/);
-  if (!m) return String(deltaStrOrNum); // if weird, just show as-is
-  const sign = m[1] || "";
+  if (!m) return String(deltaStrOrNum);
+  const sign = m[1] || (Number(m[2]) >= 0 ? "+" : "-");
   const val = Number(m[2]);
   if (!Number.isFinite(val)) return String(deltaStrOrNum);
 
   if (units === "mmol/L") {
     const mmol = val / MGDL_PER_MMOLL;
-    const s = (sign === "" ? (val >= 0 ? "+" : "") : sign);
-    return `${s}${mmol.toFixed(1)}`;
+    return `${sign}${mmol.toFixed(1)}`;
   } else {
-    // mg/dL integer delta
-    const s = (sign === "" ? (val >= 0 ? "+" : "") : sign);
-    return `${s}${Math.round(val)}`;
+    return `${sign}${Math.round(val)}`;
   }
 }
 
 try {
-  const [data, status] = await Promise.all([getJSON(pebbleURL), getStatus()]);
-  const tz = deriveTimezone(status);
+  const [data, status, tz] = await Promise.all([getJSON(pebbleURL), getStatus(), getTimezone()]);
+
   const units = deriveUnits(status);
 
   const bg0 = (data?.bgs && data.bgs[0]) || {};
