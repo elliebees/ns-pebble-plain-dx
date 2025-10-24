@@ -4,18 +4,21 @@
 // - Units auto-detect (mg/dL or mmol/L) via /status.json
 // - Timezone: NIGHTSCOUT_TZ override > /status.json > runner local (UTC fallback)
 // - Robust timezone formatting via moment-timezone (independent of runner ICU)
-// - Debug logs printed to Actions log for easy troubleshooting
+// - Force mmol override via FORCE_MMOL=true (for testing)
+// - Debug logs for transparency
 
 import fs from "node:fs/promises";
 import moment from "moment-timezone";
 
 const NS = process.env.NIGHTSCOUT_URL;
 const TOKEN = process.env.NIGHTSCOUT_TOKEN?.trim();
-const RAW_TZ = process.env.NIGHTSCOUT_TZ; // may be undefined
+const RAW_TZ = process.env.NIGHTSCOUT_TZ;
+const FORCE_MMOL = process.env.FORCE_MMOL?.trim()?.toLowerCase() === "true";
 
 console.log("DEBUG NIGHTSCOUT_URL exists:", Boolean(NS));
 console.log("DEBUG NIGHTSCOUT_TOKEN provided:", Boolean(TOKEN));
 console.log("DEBUG NIGHTSCOUT_TZ (raw):", JSON.stringify(RAW_TZ));
+console.log("DEBUG FORCE_MMOL (raw):", process.env.FORCE_MMOL, "→", FORCE_MMOL);
 
 if (!NS) {
   console.error("❌ Missing NIGHTSCOUT_URL environment variable.");
@@ -42,6 +45,10 @@ async function getStatus() {
 }
 
 function deriveUnits(status) {
+  if (FORCE_MMOL) {
+    console.log("DEBUG forcing mmol/L via env var");
+    return "mmol/L";
+  }
   const raw =
     status?.settings?.units ??
     status?.settings?.units_bg ??
@@ -54,7 +61,6 @@ function deriveUnits(status) {
 }
 
 function resolveTimezone(status) {
-  // 1) explicit override (trust user, but warn if unknown to moment)
   const override = RAW_TZ?.trim();
   if (override) {
     if (!moment.tz.zone(override)) {
@@ -65,7 +71,6 @@ function resolveTimezone(status) {
     return override;
   }
 
-  // 2) Nightscout /status.json
   const tzFromStatus = status?.settings?.timezone?.trim();
   if (tzFromStatus) {
     if (!moment.tz.zone(tzFromStatus)) {
@@ -76,7 +81,6 @@ function resolveTimezone(status) {
     return tzFromStatus;
   }
 
-  // 3) runner local or UTC
   const localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   if (!moment.tz.zone(localTZ)) {
     console.log("DEBUG WARNING: runner local TZ not in moment DB; using UTC:", localTZ);
@@ -138,7 +142,6 @@ try {
   const deltaDisplay = formatDelta(deltaRaw, units);
   const battery = data?.status?.device?.battery ?? data?.status?.battery ?? "?";
 
-  // Use moment-timezone to format robustly regardless of runner ICU
   const stamp = moment().tz(tz && moment.tz.zone(tz) ? tz : "UTC").format("YYYY-MM-DD HH:mm:ss z");
 
   const html = `<!doctype html>
